@@ -1,4 +1,3 @@
-connection err handler
 Add function of hourly report
-Add function of worst time of day, the rate of lost package
+Add function of worst time of test duration
 Add test of Xian, Chengdu, Beijing, Shengzheng.
