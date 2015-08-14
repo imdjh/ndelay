@@ -1,0 +1,31 @@
+{
+  "name": "ndelay",
+  "version": "0.2.1",
+  "description": "Check network delay as Client/Server model w/ nodejs",
+  "main": "client/sender.js",
+  "dependencies": {
+    "commander": "^2.8.1",
+    "express": "^4.13.3",
+    "hiredis": "^0.4.0",
+    "redis": "^0.12.1"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/imdjh/ndelay.git"
+  },
+  "keywords": [
+    "network",
+    "delay",
+    "monitor"
+  ],
+  "author": "dyejarhoo@gmail.com",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/imdjh/ndelay/issues"
+  },
+  "homepage": "https://github.com/imdjh/ndelay"
+}

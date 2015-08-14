@@ -1,6 +1,6 @@
+Script to setup server to remote
 Add unit test
-Rewrite client to testing http connection
-Rewrite client with es6
+
 Add function of hourly report
 Add function of worst time of test duration
 Add test of Xian, Chengdu, Beijing, Shengzheng.

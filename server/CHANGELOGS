@@ -1,0 +1,12 @@
+v0.2.1
+- Able to check incoming packet size in http-server mode
+- Reject connection(helper banConn) if unexpect connection happens
+
+v0.1.1
+- Add Commandline argument support(using commanderjs)
+- Add http-server mode
+- Add verbose & debug mode
+- Rewrite in es6
+
+v0.0.1
+-Initial works version

@@ -5,28 +5,28 @@
  * META-data 
  * Author: dyejarhoo@gmail.com
  * lang-spec: es6
- * version: 0.1.1
+ * version: 0.2.1
  */
 
 
 /**
  *  Module dependencies
  */
-var program = require('commander');
-var qs = require('querystring');
+var program = require('commander'); // parse cli arguments
+var qs = require('querystring');    // parse POST data
 
 
 /**
  * Parse argv
  */
 program
-  .version('0.1.1')
+  .version('0.2.1')
   .usage('[-v]')
-  .option('-v, --verbose', 'Verbose output to console')
-  .option('--enable-debug', 'Output debug info to console')
+  .option('-v, --verbose', 'Make verbose')
+  .option('--enable-debug', 'Output debug info')
   .option('-l, --listen <ip>', 'Listen connection to <ip>, default to all', '0.0.0.0')
   .option('-p, --port <port>', 'ndelay stays at <port>, default to 8100', 8100)
-  .option('--packet-size <kb>', 'Sends <kb> size packet on receiving client connection, default to 1000', 1000)
+  .option('--packet-size <byte>', 'Sends <byte> size packet on receiving client connection, default to 1000', 1000)
   .option('--http-server', 'Server is http server, default to TCP socket server')
   .parse(process.argv);
 
@@ -38,7 +38,6 @@ if (program.args.length) {
 /**
  * Initialize values
  */
-var buf = new Buffer(program.packetSize, 'binary');
 var isVerbose = 0;
 if (program.verbose || program.enableDebug) {
 	isVerbose = 1;
@@ -69,7 +68,7 @@ if (!program.httpServer) {
 				console.log('data content is: ' + util.inspect(d));
 			}
 
-			sock.write(buf);
+			sock.write(new Buffer(program.packetSize, 'binary'));
 		});
 
 		sock.on('close', function (c) {
@@ -96,7 +95,7 @@ if (!program.httpServer) {
 				let jsonReq = qs.parse(chunk.toString());
 				let reqData = jsonReq.ndelay;
 				
-				if (reqData === undefined || reqData.length < 990) {
+				if (reqData === undefined || reqData.length < 990) { // MAGIC: 990
 					banConn(req, res);
 				} else {
 						if (isVerbose) {
