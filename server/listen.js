@@ -13,6 +13,7 @@
  *  Module dependencies
  */
 var program = require('commander');
+var qs = require('querystring');
 
 
 /**
@@ -70,7 +71,7 @@ if (!program.httpServer) {
 
 			sock.write(buf);
 		});
-		
+
 		sock.on('close', function (c) {
 			if (isVerbose) {
 				console.log(`Connection closed from: ${rAddr}:${rPort}`);
@@ -91,24 +92,40 @@ if (!program.httpServer) {
 
 		if (req.method === 'POST') {
 		
-			req.on('data', () => {
-				// TODO: check the data length is 1kb
-				// aka: have send to me, time to reply
-					let c = genRandomString();
-					res.writeHead(200, {
-						'Conetent-Length': c.length,
-						'Content-Type': 'text/plain' });
-					res.end(c, () => {
-						console.log(`Connection closed to: ${rAddr}:${rPort}`);
-					});
+			req.on('data', (chunk) => {
+				let jsonReq = qs.parse(chunk.toString());
+				let reqData = jsonReq.ndelay;
+				
+				if (reqData === undefined || reqData.length < 990) {
+					banConn(req, res);
+				} else {
+						if (isVerbose) {
+							console.log('Received', reqData.length, 'bytes');
+							if (program.enableDebug) {
+								console.log('Received data:', util.inspect(jsonReq));
+							}
+						}
+						let c = genRandomString();
+						res.writeHead(200, {
+							'Conetent-Length': c.length,
+							'Content-Type': 'text/plain' });
+						res.end(c, () => {
+							console.log(`Connection closed to: ${rAddr}:${rPort}`);
+						});
+				}
 			});
 		} else {
 			res.writeHead(405, "Method not supported");
-			res.end('You are not supported.');
+			banConn(req, res);
 		}
 
 	
 	}).listen(program.port, program.listen, 99999, logservertype('HTTP'));
+// Refuse unexcept connections
+function banConn(req, res) {
+	console.log('Bad request from:', req.socket.remoteAddress + ':' + req.socket.remotePort, '/!\\Connection closed/!\\');
+	res.end('You are not supported.');
+}
 
 // Verify connection
 function isVerifiedConn(req) {

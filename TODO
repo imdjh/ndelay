@@ -1,5 +1,5 @@
 Add unit test
-Rewrite to testing http connection
+Rewrite client to testing http connection
 Rewrite client with es6
 Add function of hourly report
 Add function of worst time of test duration
