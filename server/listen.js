@@ -1,15 +1,17 @@
 #!/usr/bin/env node
 "use strict"
 
-// META-data area
-// author: dyejarhoo@gmail.com
-// lang-spec: es6
-//
+/**
+ * META-data 
+ * Author: dyejarhoo@gmail.com
+ * lang-spec: es6
+ * version: 0.1.1
+ */
+
 
 /**
  *  Module dependencies
  */
-var net = require('net');
 var program = require('commander');
 
 
@@ -20,9 +22,11 @@ program
   .version('0.1.1')
   .usage('[-v]')
   .option('-v, --verbose', 'Verbose output to console')
+  .option('--enable-debug', 'Output debug info to console')
   .option('-l, --listen <ip>', 'Listen connection to <ip>, default to all', '0.0.0.0')
   .option('-p, --port <port>', 'ndelay stays at <port>, default to 8100', 8100)
-  .option('--package-size <kb>', 'Sends <kb> size package on receiving client connection, default to 1000', 1000)
+  .option('--packet-size <kb>', 'Sends <kb> size packet on receiving client connection, default to 1000', 1000)
+  .option('--http-server', 'Server is http server, default to TCP socket server')
   .parse(process.argv);
 
 if (program.args.length) {
@@ -33,40 +37,103 @@ if (program.args.length) {
 /**
  * Initialize values
  */
-var buf = new Buffer(program.packageSize, 'binary');
-var isverbose = 0;
-if (program.verbose) {
-	isverbose = 1;
+var buf = new Buffer(program.packetSize, 'binary');
+var isVerbose = 0;
+if (program.verbose || program.enableDebug) {
+	isVerbose = 1;
 	var util = require('util');
 }
 
-net.createServer(function (sock) {
-	let rAddr = sock.remoteAddress;
-	let rPort = sock.remotePort;
+
+/**
+ * Main Logic
+ */
+if (!program.httpServer) {
+	var net = require('net');
+	net.createServer(function (sock) {
+		let rAddr = sock.remoteAddress;
+		let rPort = sock.remotePort;
 
 
-	sock.on('data', function (d) {
-		if (program.verbose) {
-			console.log('Connection established from: ' + rAddr + ':' + rPort);
+		sock.on('data', function (d) {
+			if (isVerbose) {
+				console.log(`Connection established from: ${rAddr}:${rPort}`);
+			}
+
+			// TODO: check the data length is 1kb
+			// var bl = Buffer.byteLength(d, 'binary');
+			//
+			if (program.enableDebug) {
+				console.log('data type is: ' + typeof d);
+				console.log('data content is: ' + util.inspect(d));
+			}
+
+			sock.write(buf);
+		});
+		
+		sock.on('close', function (c) {
+			if (isVerbose) {
+				console.log(`Connection closed from: ${rAddr}:${rPort}`);
+			}
+		});
+	}).listen(program.port, program.listen, logservertype('TCP SOCKET')); // end of tcp socket server
+} else {
+	var http = require('http');
+
+	var server = http.createServer(function (req, res) {
+		let rAddr = req.socket.remoteAddress;
+		let rPort = req.socket.remotePort;
+		if (isVerbose) {
+			console.log(`Connection established from: ${rAddr}:${rPort}`);
+		} else if (program.enableDebug) {
+			console.log('HTTP header :' + JSON.stringify(req.headers));
 		}
 
-		// TODO: check the data length is 1kb
-		// var bl = Buffer.byteLength(d, 'binary');
-		//
-		if (program.verbose) {
-			console.log('data type is: ' + typeof d);
-			console.log('data content is: ' + util.inspect(d));
+		if (req.method === 'POST') {
+		
+			req.on('data', () => {
+				// TODO: check the data length is 1kb
+				// aka: have send to me, time to reply
+					let c = genRandomString();
+					res.writeHead(200, {
+						'Conetent-Length': c.length,
+						'Content-Type': 'text/plain' });
+					res.end(c, () => {
+						console.log(`Connection closed to: ${rAddr}:${rPort}`);
+					});
+			});
+		} else {
+			res.writeHead(405, "Method not supported");
+			res.end('You are not supported.');
 		}
 
-		// all ok, write back
-		sock.write(buf);
-	});
 	
-	sock.on('close', function (c) {
-		if (program.verbose) {
-			console.log('Connection closed from: ' + rAddr + ':' + rPort);
-		}
-	});
-}).listen(program.port, program.listen);
+	}).listen(program.port, program.listen, 99999, logservertype('HTTP'));
 
-console.log('server running @ ' + program.listen + ':' + program.port);
+// Verify connection
+function isVerifiedConn(req) {
+	if (req.method === 'POST') {
+		return true
+	}
+	return false
+}
+
+// generate random but fixed-size string
+function genRandomString() {
+	let arrSeed = ['4', '2', 'L', 'K'];
+	let arrString = [];
+
+	for (let i = 0; i < program.packetSize; i++) {
+		let r = Math.random() * arrSeed.length;
+		arrString.push(arrSeed[Math.floor(r)]);
+	}
+
+	return arrString.join('');
+}
+	
+}
+
+
+function logservertype(type) {
+	console.log(type, 'server running @', program.listen + ':' + program.port);
+}
