@@ -46,21 +46,26 @@ if (program.args.length) {
 var isVerbose = 0;
 if (program.verbose) {
     isVerbose = 1;
-    // TODO: var util = require('util');
-    // if nessceary
+    var util = require('util');
 }
-var arrTimeList = [];
-var errCount = 0;
-var timeStamp1, timeStamp2;
-
+if (!program.bandwith) {
+    if (!program.limit) {
+        program.limit = 200;
+    }
+}
+if (program.bandwith) {
+    if (!program.limit) {
+        program.limit = Math.floor(program.packetSize / program.bandwith);
+    }
+}
 
 /**
  * Main Logic
- *
- * TODO:
- * if connection failed at first, give promotion of wrong target
  */
 if (!program.http) {
+    let arrTimeList = [];
+    let errCount = 0;
+    let timeStamp1, timeStamp2;
     let client = new net.Socket();
     // Would have 10+ event listeners
     client.setMaxListeners(0);
@@ -95,17 +100,6 @@ if (!program.http) {
         }
     });
 
-    // TODO: loop for MAGIC times
-    if (!program.bandwith) {
-        if (!program.limit) {
-            program.limit = 200;
-        }
-    }
-    if (program.bandwith) {
-        if (!program.limit) {
-            program.limit = Math.floor(program.packetSize / program.bandwith);
-        }
-    }
     setInterval(function () {
         client.connect(program.port, program.target, function () {
             let buf = new Buffer(program.packetSize, 'binary');
@@ -138,12 +132,16 @@ if (!program.http) {
     let qs = require('querystring');
     let redis = require('redis'),
         client = redis.createClient(); // TODO: configurable via cli
-    client.on('error',  (err) => {
+    client.on('error', (err) => {
         console.log("Error", err);
     });
 
+    let webapp = require('express')();
+
+
     if (isVerbose) {
         client.on('ready', () => {
+            client.del("counting");
             console.log("Redis ready to receive data.");
         })
     }
@@ -185,37 +183,108 @@ if (!program.http) {
             res.on('data', function (chunk) {
                 if (chunk.toString().length > 990) {
                     self.timeStamp.two = Date.now();
-                    if (isVerbose) { console.log('timeStamp.two been written'); }
+                    if (isVerbose) {
+                        console.log('timeStamp.two', self.timeStamp.two, 'been written');
+                    }
 
                     // write result to database
-                    client.zincrby("counting", "1", (self.timeStamp.two - self.timeStamp.one), function (err, res) {
+                    let tdiff = self.timeStamp.two - self.timeStamp.one;
+                    client.zincrby("counting", "1", tdiff, function (err, res) {
                         if (err || res === undefined) {
                             console.log('Unexpected Redis error, quitting...');
                             process.exit(255);
                         }
                     })
+                    if (isVerbose) {
+                        console.log('network delay:', tdiff);
+                    }
                 } else {
                     console.log('Response packet invalid! /!\\Connection Closed/!\\');
-                    // TODO: close conn
+                    return false;
                 }
             });
         });
+        req.on('error', (err) => {
+            if (err.message.indexOf('REF') !== -1) {
+                console.log('Server refused connection! Maybe in wrong running mode.(http/tcp)');
+                process.exit(1);
+            }
+        })
         req.write(data);
         if (isVerbose) {
             console.log(`${program.packetSize} size packet has been sent!`, 'Listen for response');
         }
         req.end();
         self.timeStamp.one = Date.now();
-        if (isVerbose) { console.log('timeStamp.one been written'); }
-
-        /* redis area TODO
-
-
-         client.zincrby("counting", "1", _TODOdelay, function (err, res) {
-
-         });
-         */
+        if (isVerbose) {
+            console.log('timeStamp.one', self.timeStamp.one, 'been written');
+        }
     }, program.limit);
+
+
+    var packetCount, totalTimeTransfer,
+        delayMax, delayMin;
+    setInterval(() => {
+        // redis manipulate
+
+        // Get packet count
+        packetCount = 0;
+        client.zrange("counting", 0, -1, 'WITHSCORES', (err, reply) => {
+            if (false) { // TODO: debug info
+                console.log('Received:', reply.length / 2);
+                console.log(util.inspect(reply));
+            }
+            reply.forEach((raw, index) => {
+                if (index % 2 !== 0) {
+                    packetCount += Number(raw);
+                }
+            });
+        });
+
+        // Get packet total transfer time
+        totalTimeTransfer = 0;
+        client.zrange("counting", 0, -1, 'WITHSCORES', (err, reply) => {
+            if (false) {  // TODO: debug info
+                console.log('Received:', reply.length);
+                console.log(util.inspect(reply));
+            }
+            for (let i = 0; i <= reply.length - 1; i += 2) {
+                totalTimeTransfer += Number(reply[i]) * Number(reply[i + 1]);
+            }
+        });
+
+        // Max delay
+        client.sort("counting", "DESC", "LIMIT", 0, 1, (err, reply) => {delayMax = Number(reply)});
+
+        // Most common delay, as 'min'
+        client.zrange("counting", -1, -1, (err, reply) => {delayMin = Number(reply)})
+    }, program.limit * 1); // MAGIC number
+
+    /**
+     * Web interface implements
+     */
+    webapp.get('/', function (req, res) {
+        if (isVerbose) {
+            console.log('Total packet transfer time is', totalTimeTransfer);
+            console.log('Total packet count is', packetCount);
+        }
+
+        // TODO: persudo succ num, implement setTimeout event first
+        /*
+         res.json({'count': packetCount, 'succ': packetCount, 'result': {'min': delayMin, 'max': delayMax,
+         'avg': delayAvg, 'mdev': delayMdev}});
+         */
+        let avg = Math.floor(totalTimeTransfer / packetCount);
+        res.json({'count': packetCount, 'succ': packetCount, 'sumTime': totalTimeTransfer, 'result': {'avg': avg,
+            'max': delayMax,
+            'min': delayMin }});
+
+    });
+    webapp.listen(program.localPort, () => {
+        console.log('Web interface running @ localhost:' + program.localPort);
+    })
+
+
 }
 
 // generate random but fixed-size string
