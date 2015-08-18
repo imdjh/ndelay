@@ -5,7 +5,7 @@
  * META-data
  * Author: dyejarhoo@gmail.com
  * lang-spec: es6
- * version: 0.2.1
+ * version: 0.3.2
  */
 
 /**
@@ -44,6 +44,7 @@ if (program.args.length) {
  * Initialize values
  */
 var isVerbose = 0;
+var getInited = 0;
 if (program.verbose) {
     isVerbose = 1;
     var util = require('util');
@@ -138,13 +139,14 @@ if (!program.http) {
 
     let webapp = require('express')();
 
-
-    if (isVerbose) {
-        client.on('ready', () => {
-            client.del("counting");
+    client.on('ready', () => {
+        client.del("counting, stor, logging");
+        let date = new Date();
+        client.rpush("logging", date.getHours());
+        if (isVerbose) {
             console.log("Redis ready to receive data.");
-        })
-    }
+        }
+    });
 
     let noKeepAliveAgent = new http.Agent({keepAlive: false});
     let options = {
@@ -165,6 +167,23 @@ if (!program.http) {
     }
 
     setInterval(function () {
+        let date = new Date();
+        if (date.getMinutes() < 1 && getInited == 0) { // MAGIC
+            getInited = 1;
+            // get result &  restore
+            http.get(`http://localhost:${program.localPort}`, (res) => {  // get result from API
+                res.on('data', (chunk) => {
+                    client.rpush("logging", chunk.toString());
+                    if (isVerbose) {
+                        console.log(chunk.toString());
+                    }
+                    client.zunionstore("stor", 2, "counting", "stor");
+                    client.del("counting");
+                })
+            });
+        } else if (getInited && date.getMinutes() >= 1) {
+            getInited = 0;
+        }
         let self = this;
         let timeStamp = {
             one: 0,
@@ -254,10 +273,14 @@ if (!program.http) {
         });
 
         // Max delay
-        client.sort("counting", "DESC", "LIMIT", 0, 1, (err, reply) => {delayMax = Number(reply)});
+        client.sort("counting", "DESC", "LIMIT", 0, 1, (err, reply) => {
+            delayMax = Number(reply)
+        });
 
         // Most common delay, as 'min'
-        client.zrange("counting", -1, -1, (err, reply) => {delayMin = Number(reply)})
+        client.zrange("counting", -1, -1, (err, reply) => {
+            delayMin = Number(reply)
+        })
     }, program.limit * 1); // MAGIC number
 
     /**
@@ -270,14 +293,15 @@ if (!program.http) {
         }
 
         // TODO: persudo succ num, implement setTimeout event first
-        /*
-         res.json({'count': packetCount, 'succ': packetCount, 'result': {'min': delayMin, 'max': delayMax,
-         'avg': delayAvg, 'mdev': delayMdev}});
-         */
+        // mdev value
         let avg = Math.floor(totalTimeTransfer / packetCount);
-        res.json({'count': packetCount, 'succ': packetCount, 'sumTime': totalTimeTransfer, 'result': {'avg': avg,
-            'max': delayMax,
-            'min': delayMin }});
+        res.json({
+            'count': packetCount, 'succ': packetCount, 'sumTime': totalTimeTransfer, 'result': {
+                'avg': avg,
+                'max': delayMax,
+                'min': delayMin
+            }
+        });
 
     });
     webapp.listen(program.localPort, () => {
@@ -289,7 +313,7 @@ if (!program.http) {
 
 // generate random but fixed-size string
 function genRandomString() {
-    let arrSeed = ['4', '2', 'L', 'K'];
+    let arrSeed = ['4', '2', 'L', 'K'];  // Full of MAGIC
     let arrString = [];
 
     for (let i = 0; i < program.packetSize; i++) {
