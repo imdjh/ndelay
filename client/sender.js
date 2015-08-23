@@ -5,7 +5,7 @@
  * META-data
  * Author: dyejarhoo@gmail.com
  * lang-spec: es6
- * version: 0.3.2
+ * version: 0.4.1
  */
 
 /**
@@ -286,7 +286,7 @@ if (!program.http) {
     /**
      * Web interface implements
      */
-    webapp.get('/', function (req, res) {
+    webapp.get('/sum', function (req, res) {
         if (isVerbose) {
             console.log('Total packet transfer time is', totalTimeTransfer);
             console.log('Total packet count is', packetCount);
@@ -295,6 +295,7 @@ if (!program.http) {
         // TODO: persudo succ num, implement setTimeout event first
         // mdev value
         let avg = Math.floor(totalTimeTransfer / packetCount);
+        res.append('Access-Control-Allow-Origin', '*');
         res.json({
             'count': packetCount, 'succ': packetCount, 'sumTime': totalTimeTransfer, 'result': {
                 'avg': avg,
@@ -304,6 +305,34 @@ if (!program.http) {
         });
 
     });
+    webapp.get('/api/hourly', function (req, res) {
+        let dataset = [];
+        client.zrange("counting", 0, -1, 'WITHSCORES', (err, reply) => {
+            let interobj = {};
+            reply.forEach((raw, index) => {
+                if (index % 2 == 0) {
+                    // 0, 2, 4... is data
+                    interobj.y = raw;
+                } else {
+                    // 1, 3, 5... is count
+                    interobj.x = raw;
+                    dataset.push((function (obj) {
+                            let clone = {};
+                            for (var key in obj) {
+                                if (obj.hasOwnProperty(key)) //ensure not adding inherited props
+                                    clone[key] = obj[key];
+                            }
+                            return clone;
+                        }(interobj))
+                    ); // js .push push only reference
+                }
+            });
+            res.append('Access-Control-Allow-Origin', '*');
+            res.json(dataset);
+        });
+
+    });
+
     webapp.listen(program.localPort, () => {
         console.log('Web interface running @ localhost:' + program.localPort);
     })
